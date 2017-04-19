@@ -11,7 +11,17 @@ this file and include it in basic-server.js so that it actually works.
 *Hint* Check out the node module documentation at http://nodejs.org/api/modules.html.
 
 **************************************************************/
+var url = require('url');
+var defaultCorsHeaders = {
+  'access-control-allow-origin': '*',
+  'access-control-allow-methods': 'GET, POST, PUT, DELETE, OPTIONS',
+  'access-control-allow-headers': 'content-type, accept, X-Parse-Application-Id, X-Parse-REST-API-Key',
+  'access-control-max-age': 10,
+  'Content-Type': 'application/json' // Seconds.
+};
+var results = [];
 
+var messageObj = {}; //{lobby: [[username, message], [username1, message1]]};
 exports.requestHandler = function(request, response) {
   // Request and Response come from node's http module.
   //
@@ -32,43 +42,73 @@ exports.requestHandler = function(request, response) {
     // If no roomname on message, add it to roomname = lobby.
     // Else push message into messageObj[roomname].
 
-  var messageObj = {}; //{lobby: [[username, message], [username1, message1]]};
+
+  var route = url.parse(request.url).pathname;
+
+
+
+
   var message = '';
   request.on('data', (chunk) => {
     message += chunk;
-  }).on('end', (chunk) => {
-    try  {
+  }).on('end', () => {
+    try {
       message = JSON.parse(message);
+      //console.log(message, 'message after parsing');
     } catch (error) {
       console.log(`error: ${error.message}`);
     }
-    //check to see if the user provided a room, if not, lobby is assigned as default
-    if (!message.roomname) {
-      message.roomname = 'lobby';
-    }
-    //check if the message object contains a key with the roomname
-    if (messageObj[message.roomname]) {
-      //if so, push username:message to key
-      messageObj[message.roomname].push([message.username, message.text]);
-    } else {
-    //if not
-      //make new key and assign it to username:message
-      messageObj[message.roomname] = [message.username, message.text];
-    }
-    console.log(messageObj);
-  });
+    if (request.method === 'POST' && route === '/classes/messages') {
+      //check to see if the user provided a room, if not, lobby is assigned as default
+      if (!message.roomname) {
+        message.roomname = 'lobby';
+      }
+      //check if the message object contains a key with the roomname
+      if (messageObj[message.roomname]) {
+        //if so, push username:message to key
+        messageObj[message.roomname].push([message.username, message.text]);
+      } else {
+      //if not
+        //make new key and assign it to username:message
+        messageObj[message.roomname] = [[message.username, message.text]];
+      }
+      console.log(messageObj);
+    } else if (request.method === 'GET') {
+      // For each room,
+      for (var room in messageObj) {
+        // Create temp obj to hold msgObj
+        var roomArray = messageObj[room];
+        // For each [username, message] tuple in tempArr.
+        roomArray.forEach(function (messageTuple) {
+          var tempObj = {};
+          // Set temp.roomname to room,
+          tempObj.roomname = room;
+          // Set temp.username to tuple[0]
+          tempObj.username = messageTuple[0];
+          // Set temp.text to tuple[1]
+          tempObj.text = messageTuple[1];
+          //set createdAt to an empty string for now
+          tempObj.createdAt = '';
+          //add each new object to the results array
+          results.push(tempObj);
+        });
+      }
 
+    } else if (request.method === 'OPTIONS') {
+
+    }
+  });
+  var statusCode;
   // The outgoing status.
-  var statusCode = 200;
+  if (route === '/classes/messages') {
+    statusCode = 200;
+  } else {
+    statusCode = 404;
+  }
 
   // See the note below about CORS headers.
   var headers = defaultCorsHeaders;
 
-  // Tell the client we are sending them plain text.
-  //
-  // You will need to change this if you are sending something
-  // other than plain text, like JSON or HTML.
-  headers['Content-Type'] = 'application/JSON';
 
   // .writeHead() writes to the request line and headers of the response,
   // which includes the status and all headers.
@@ -81,7 +121,8 @@ exports.requestHandler = function(request, response) {
   //
   // Calling .end "flushes" the response's internal buffer, forcing
   // node to actually send all the data over to the client.
-  response.end('This is changed!');
+  console.log(results, 'results Array');
+  response.end(JSON.stringify({results: results}));
 };
 
 // These headers will allow Cross-Origin Resource Sharing (CORS).
@@ -93,11 +134,6 @@ exports.requestHandler = function(request, response) {
 //
 // Another way to get around this restriction is to serve you chat
 // client from this domain by setting up static file serving.
-var defaultCorsHeaders = {
-  'access-control-allow-origin': '*',
-  'access-control-allow-methods': 'GET, POST, PUT, DELETE, OPTIONS',
-  'access-control-allow-headers': 'content-type, accept, X-Parse-Application-Id, X-Parse-REST-API-Key',
-  'access-control-max-age': 10 // Seconds.
-};
+
 
 
